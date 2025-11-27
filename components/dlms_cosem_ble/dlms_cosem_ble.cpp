@@ -22,35 +22,9 @@
 static constexpr uint32_t BOOT_TIMEOUT_MS = 10 * 1000;
 static constexpr uint32_t SAFEGUARD_INTERVAL_MS = 30 * 1000;
 static constexpr uint8_t SAFEGUARD_ERROR_LIMIT = 10;
-namespace esphome {
-namespace dlms_cosem_ble {
+namespace esphome::dlms_cosem_ble {
 
 static const char *const TAG = "dlms_cosem_ble";
-
-// namespace espbt = esphome::esp32_ble_tracker;
-
-// static const espbt::ESPBTUUID DLMS_COSEM_SERVICE_UUID =
-//     espbt::ESPBTUUID::from_raw("b91b0100-8bef-45e2-97c3-1cd862d914df");
-// static const espbt::ESPBTUUID DLMS_COSEM_VER_UUID =
-// espbt::ESPBTUUID::from_raw("b91b0101-8bef-45e2-97c3-1cd862d914df"); static const espbt::ESPBTUUID DLMS_COSEM_TXN_UUID
-// = espbt::ESPBTUUID::from_raw("b91b0105-8bef-45e2-97c3-1cd862d914df"); static const espbt::ESPBTUUID
-// DLMS_COSEM_RX_UUIDS[RX_HANDLES_NUM] = {
-//     espbt::ESPBTUUID::from_raw("b91b0106-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b0107-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b0108-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b0109-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b010a-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b010b-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b010c-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b010d-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b010e-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b010f-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b0110-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b0111-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b0112-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b0113-8bef-45e2-97c3-1cd862d914df"),
-//     espbt::ESPBTUUID::from_raw("b91b0114-8bef-45e2-97c3-1cd862d914df"),
-// };
 
 static char empty_str[] = "";
 
@@ -482,10 +456,10 @@ void DlmsCosemBleComponent::try_connect() {
   ESP_LOGV(TAG, "Setting desired MTU to %d", DESIRED_MTU);
   esp_ble_gatt_set_local_mtu(DESIRED_MTU);
 
-  esp_ble_auth_req_t auth_req = ESP_LE_AUTH_REQ_SC_MITM_BOND;
-  esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));
-  esp_ble_io_cap_t iocap = ESP_IO_CAP_IN;
-  esp_ble_gap_set_security_param(ESP_BLE_SM_IOCAP_MODE, &iocap, sizeof(uint8_t));
+  // esp_ble_auth_req_t auth_req = ESP_LE_AUTH_REQ_SC_MITM_BOND;
+  // esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));
+  // esp_ble_io_cap_t iocap = ESP_IO_CAP_IN;
+  // esp_ble_gap_set_security_param(ESP_BLE_SM_IOCAP_MODE, &iocap, sizeof(uint8_t));
   // uint8_t key_size = 16;
   // esp_ble_gap_set_security_param(ESP_BLE_SM_MAX_KEY_SIZE, &key_size, sizeof(uint8_t));
   // uint8_t oob_support = ESP_BLE_OOB_DISABLE;
@@ -509,6 +483,13 @@ void DlmsCosemBleComponent::ble_set_error_() {
 
 bool DlmsCosemBleComponent::ble_discover_characteristics_() {
   bool result{true};
+
+  auto svc = this->parent_->get_service(this->service_uuid_);
+  if (svc == nullptr) {
+    ESP_LOGW(TAG, "No DLMS/COSEM service found");
+
+  }
+
   esphome::ble_client::BLECharacteristic *chr;
   ESP_LOGV(TAG, "Discovering DLMS/COSEM characteristics...");
   if (!this->ch_handle_tx_) {
@@ -913,5 +894,4 @@ void DlmsCosemBleComponent::set_state_(FsmState state) {
   this->state_ = state;
 }
 
-}  // namespace dlms_cosem_ble
-}  // namespace esphome
+}  // namespace esphome::dlms_cosem_ble
