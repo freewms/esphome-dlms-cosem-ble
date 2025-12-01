@@ -128,7 +128,7 @@ void DlmsCosemBleComponent::update() { this->try_connect(); }
 void DlmsCosemBleComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "DLMS/COSEM BLE Component");
   if (this->parent_ != nullptr) {
-//    ESP_LOGCONFIG(TAG, "  target address: %s", this->parent_->address_str().c_str());
+    //    ESP_LOGCONFIG(TAG, "  target address: %s", this->parent_->address_str().c_str());
   } else {
     ESP_LOGCONFIG(TAG, "  target address: not set");
   }
@@ -459,7 +459,7 @@ void DlmsCosemBleComponent::try_connect() {
   esp_ble_auth_req_t auth_req = ESP_LE_AUTH_REQ_SC_MITM_BOND;
   esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));
 
-  esp_ble_io_cap_t iocap = ESP_IO_CAP_KBDISP;  // ESP_IO_CAP_IN;
+  esp_ble_io_cap_t iocap = ESP_IO_CAP_IN;  // ESP_IO_CAP_KBDISP
   esp_ble_gap_set_security_param(ESP_BLE_SM_IOCAP_MODE, &iocap, sizeof(uint8_t));
 
   uint8_t key_size = 16;
@@ -468,13 +468,13 @@ void DlmsCosemBleComponent::try_connect() {
   uint8_t oob_support = ESP_BLE_OOB_DISABLE;
   esp_ble_gap_set_security_param(ESP_BLE_SM_OOB_SUPPORT, &oob_support, sizeof(uint8_t));
 
-  uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;  
+  uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
   esp_ble_gap_set_security_param(ESP_BLE_SM_SET_INIT_KEY, &init_key, sizeof(init_key));
 
-  uint8_t resp_key = ESP_BLE_ID_KEY_MASK;  
+  uint8_t resp_key = ESP_BLE_ID_KEY_MASK;
   esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY, &resp_key, sizeof(resp_key));
 
-  this->parent_->set_remote_addr_type(BLE_ADDR_TYPE_RANDOM);
+  this->parent_->set_remote_addr_type(BLE_ADDR_TYPE_RANDOM);  // move to config in future
 
   this->parent_->connect();
 }
@@ -496,24 +496,29 @@ bool DlmsCosemBleComponent::ble_discover_characteristics_() {
   // Some stacks do not populate the service cache for 128-bit UUIDs until after characteristic discovery,
   // so don't fail loudly if get_service() returns nullptr here.
   auto *svc = this->parent_->get_service(this->service_uuid_);
+
   if (svc == nullptr) {
     ESP_LOGW(TAG, "DLMS/COSEM service not found with 128-bit UUID");
-
-    svc = this->parent_->get_service(0x0001); //try with 16-bit UUID
+    uint16_t svc16 = 0x0001;
+    svc = this->parent_->get_service(svc16);  // try with 16-bit UUID
     if (svc == nullptr) {
       ESP_LOGW(TAG, "DLMS/COSEM service not found with 16-bit UUID");
+    } else {
+      ESP_LOGI(TAG, "DLMS/COSEM service found with 16-bit UUID");
+      this->service_uuid_ = espbt::ESPBTUUID::from_uint16(svc16);
     }
-
   }
-
-
+  
+  if (svc && !svc->parsed) {
+    svc->parse_characteristics();
+  }
 
   esphome::ble_client::BLECharacteristic *chr;
   ESP_LOGV(TAG, "Discovering DLMS/COSEM characteristics...");
   if (!this->ch_handle_tx_) {
     chr = this->parent_->get_characteristic(this->service_uuid_, this->write_char_uuid_);
     if (chr == nullptr) {
-      ESP_LOGW(TAG, "No TX/Notify char found");
+      ESP_LOGW(TAG, "No TX char found");
       result = false;
     } else {
       this->ch_handle_tx_ = chr->handle;
@@ -720,8 +725,8 @@ void DlmsCosemBleComponent::gattc_event_handler(esp_gattc_cb_event_t event, esp_
                 this->parent_->is_paired() ? "YES" : "NO");
 
       if (!this->ble_discover_characteristics_()) {
-//        SET_STATE(FsmState::ERROR);
-//        this->parent_->disconnect();
+        //        SET_STATE(FsmState::ERROR);
+        //        this->parent_->disconnect();
 
         break;
       }
