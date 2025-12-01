@@ -495,7 +495,18 @@ bool DlmsCosemBleComponent::ble_discover_characteristics_() {
 
   // Some stacks do not populate the service cache for 128-bit UUIDs until after characteristic discovery,
   // so don't fail loudly if get_service() returns nullptr here.
-  this->parent_->get_service(this->service_uuid_);
+  auto *svc = this->parent_->get_service(this->service_uuid_);
+  if (svc == nullptr) {
+    ESP_LOGW(TAG, "DLMS/COSEM service not found with 128-bit UUID");
+
+    svc = this->parent_->get_service(0x0001); //try with 16-bit UUID
+    if (svc == nullptr) {
+      ESP_LOGW(TAG, "DLMS/COSEM service not found with 16-bit UUID");
+    }
+
+  }
+
+
 
   esphome::ble_client::BLECharacteristic *chr;
   ESP_LOGV(TAG, "Discovering DLMS/COSEM characteristics...");
@@ -709,8 +720,9 @@ void DlmsCosemBleComponent::gattc_event_handler(esp_gattc_cb_event_t event, esp_
                 this->parent_->is_paired() ? "YES" : "NO");
 
       if (!this->ble_discover_characteristics_()) {
-        SET_STATE(FsmState::ERROR);
-        this->parent_->disconnect();
+//        SET_STATE(FsmState::ERROR);
+//        this->parent_->disconnect();
+
         break;
       }
 
