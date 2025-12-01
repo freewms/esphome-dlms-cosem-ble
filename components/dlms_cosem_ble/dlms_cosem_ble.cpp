@@ -493,10 +493,9 @@ void DlmsCosemBleComponent::ble_set_error_() {
 bool DlmsCosemBleComponent::ble_discover_characteristics_() {
   bool result{true};
 
-  auto svc = this->parent_->get_service(this->service_uuid_);
-  if (svc == nullptr) {
-    ESP_LOGW(TAG, "No DLMS/COSEM service found");
-  }
+  // Some stacks do not populate the service cache for 128-bit UUIDs until after characteristic discovery,
+  // so don't fail loudly if get_service() returns nullptr here.
+  this->parent_->get_service(this->service_uuid_);
 
   esphome::ble_client::BLECharacteristic *chr;
   ESP_LOGV(TAG, "Discovering DLMS/COSEM characteristics...");
@@ -509,13 +508,13 @@ bool DlmsCosemBleComponent::ble_discover_characteristics_() {
       this->ch_handle_tx_ = chr->handle;
     }
   }
-  auto *descr = this->parent_->get_config_descriptor(this->ch_handle_tx_);
-  if (descr == nullptr) {
-    ESP_LOGW(TAG, "No CCCD descriptor found");
-    result = false;
-  } else {
-    this->ch_handle_cccd_ = descr->handle;
-  }
+  // auto *descr = this->parent_->get_config_descriptor(this->ch_handle_tx_);
+  // if (descr == nullptr) {
+  //   ESP_LOGW(TAG, "No CCCD descriptor found");
+  //   result = false;
+  // } else {
+  //   this->ch_handle_cccd_ = descr->handle;
+  // }
 
   if (this->ch_handle_rx_ == 0) {
     chr = this->parent_->get_characteristic(this->service_uuid_, this->read_char_uuid_);
@@ -525,6 +524,14 @@ bool DlmsCosemBleComponent::ble_discover_characteristics_() {
     } else {
       this->ch_handle_rx_ = chr->handle;
     }
+  }
+
+  auto *descr = this->parent_->get_config_descriptor(this->ch_handle_rx_);
+  if (descr == nullptr) {
+    ESP_LOGW(TAG, "No CCCD descriptor found for RX characteristic");
+    result = false;
+  } else {
+    this->ch_handle_cccd_ = descr->handle;
   }
 
   return result;
@@ -644,33 +651,16 @@ void DlmsCosemBleComponent::ble_initiate_fragment_reads_(uint8_t fragments_to_re
 }
 
 void DlmsCosemBleComponent::ble_request_next_fragment_() {
-  if (this->rx_current_fragment_ >= this->rx_fragments_expected_) {
-    this->flags_.rx_reply = true;
-    if (this->rx_len_ == 0) {
-      return;
-    }
-    for (size_t i = 0; i < this->rx_len_; i++) {
-      this->rx_buffer_[i] = this->rx_buffer_[i] & 0x7F;
-    }
-    ESP_LOGV(TAG, "RX: %s", format_frame_pretty(this->rx_buffer_, this->rx_len_).c_str());
-    ESP_LOGVV(TAG, "RX: %s", format_hex_pretty(this->rx_buffer_, this->rx_len_).c_str());
+  // Fragmented read path not used for this protocol; notifications carry the full payload.
+  this->flags_.rx_reply = true;
+  if (this->rx_len_ == 0) {
     return;
   }
-
-  // uint16_t handle = ;
-  // if (handle == 0) {
-  //   ESP_LOGW(TAG, "Response characteristic index %u not resolved, next", this->rx_current_fragment_);
-  //   this->rx_current_fragment_++;
-  //   this->ble_request_next_fragment_();
-  //   return;
-  // }
-
-  esp_err_t status = esp_ble_gattc_read_char(this->parent_->get_gattc_if(), this->parent_->get_conn_id(),
-                                             this->ch_handle_rx_, ESP_GATT_AUTH_REQ_NONE);
-  // if (status != ESP_OK) {
-  //   ESP_LOGW(TAG, "Failed to request response read (handle 0x%04X): %d", handle, status);
-  //   SET_STATE(FsmState::ERROR);
-  // }
+  for (size_t i = 0; i < this->rx_len_; i++) {
+    this->rx_buffer_[i] = this->rx_buffer_[i] & 0x7F;
+  }
+  ESP_LOGV(TAG, "RX: %s", format_frame_pretty(this->rx_buffer_, this->rx_len_).c_str());
+  ESP_LOGVV(TAG, "RX: %s", format_hex_pretty(this->rx_buffer_, this->rx_len_).c_str());
 }
 
 void DlmsCosemBleComponent::ble_read_fragment_(const esp_ble_gattc_cb_param_t::gattc_read_char_evt_param &param) {
@@ -728,7 +718,7 @@ void DlmsCosemBleComponent::gattc_event_handler(esp_gattc_cb_event_t event, esp_
       //       remove bond, and retry connection to re-establish the bond
 
       esp_err_t status = esp_ble_gattc_register_for_notify(this->parent_->get_gattc_if(),
-                                                           this->parent_->get_remote_bda(), this->ch_handle_tx_);
+                                                           this->parent_->get_remote_bda(), this->ch_handle_rx_);
       if (status != ESP_OK) {
         ESP_LOGW(TAG, "esp_ble_gattc_register_for_notify failed: %d (continuing)", status);
       }
@@ -783,9 +773,16 @@ void DlmsCosemBleComponent::gattc_event_handler(esp_gattc_cb_event_t event, esp_
         break;
       }
 
-      uint8_t fragment_count = param->notify.value[0];
-      ESP_LOGV(TAG, "Notification received (%u fragments to read)", fragment_count);
-      this->ble_initiate_fragment_reads_(fragment_count);
+      this->rx_len_ = param->notify.value_len;
+      if (this->rx_len_ > RX_BUFFER_SIZE)
+        this->rx_len_ = RX_BUFFER_SIZE;
+      memcpy(this->rx_buffer_, param->notify.value, this->rx_len_);
+      for (size_t i = 0; i < this->rx_len_; i++) {
+        this->rx_buffer_[i] &= 0x7F;
+      }
+      ESP_LOGV(TAG, "RX: %s", format_frame_pretty(this->rx_buffer_, this->rx_len_).c_str());
+      ESP_LOGVV(TAG, "RX: %s", format_hex_pretty(this->rx_buffer_, this->rx_len_).c_str());
+      this->flags_.rx_reply = true;
       break;
     }
 
